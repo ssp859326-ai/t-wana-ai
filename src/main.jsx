@@ -18,6 +18,10 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [image, setImage] = useState('');
+  const [referenceImage, setReferenceImage] = useState('');
+  const [referenceName, setReferenceName] = useState('');
+  const [strength, setStrength] = useState(0.35);
+  const referenceInput = useRef(null);
   const [error, setError] = useState('');
   const [sidebar, setSidebar] = useState(true);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -43,11 +47,40 @@ function App() {
     } catch (e) { setError(e.message || 'Unable to connect.'); }
     finally { setBusy(false); inputRef.current?.focus(); }
   };
+  const chooseReference = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please choose an image file.'); return; }
+    if (file.size > 12 * 1024 * 1024) { setError('Please choose an image smaller than 12 MB.'); return; }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const optimized = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 768 / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(256, Math.round(img.width * scale));
+          canvas.height = Math.max(256, Math.round(img.height * scale));
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.86));
+        };
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+      setReferenceImage(optimized);
+      setReferenceName(file.name);
+      setError('');
+    } catch { setError('Could not read that image. Please try another file.'); }
+  };
   const generate = async () => {
     if (!prompt.trim() || imageBusy) return;
     setImage(''); setError(''); setImageBusy(true);
     try {
-      const res = await fetch('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt }) });
+      const res = await fetch('/api/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, image_b64: referenceImage ? referenceImage.split(',')[1] : undefined, strength }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Image generation failed.');
       setImage(data.image);
@@ -114,7 +147,7 @@ function App() {
       </section> : <section className="image-workspace">
         <div className="image-heading"><div className="welcome-eyebrow"><span className="eyebrow-spark">✦</span> IMAGE STUDIO <span className="eyebrow-line"/></div><h1>Make it <span className="gradient-word">visual.</span></h1><p>Turn the images in your mind into something real.</p></div>
         <div className="image-layout">
-          <div className="image-prompt-panel"><div className="panel-title"><WandSparkles size={16}/> <span>Describe your vision</span></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="A cinematic landscape at sunset, dreamy atmosphere, soft light..." rows="5"/><div className="prompt-foot"><span>✧ Let your imagination lead</span><span>{prompt.length}/4000</span></div><button className="generate-button" disabled={!prompt.trim() || imageBusy} onClick={generate}>{imageBusy ? <><LoaderCircle size={17} className="spin"/> Creating your image...</> : <><Sparkles size={17}/> Generate image <ArrowUp size={15}/></>}</button><div className="image-note"><Zap size={14}/> Powered by generative AI</div></div>
+          <div className="image-prompt-panel"><div className="panel-title"><WandSparkles size={16}/> <span>Describe your vision</span></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="A cinematic landscape at sunset, dreamy atmosphere, soft light..." rows="5"/><div className="prompt-foot"><span>✧ Let your imagination lead</span><span>{prompt.length}/4000</span></div><div className="reference-upload"><input ref={referenceInput} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={e => chooseReference(e.target.files?.[0])}/><button type="button" className="reference-button" onClick={() => referenceInput.current?.click()}><ImagePlus size={16}/>{referenceImage ? 'Change reference image' : 'Add reference image'}</button>{referenceImage && <button type="button" className="reference-remove" onClick={() => {setReferenceImage('');setReferenceName('');}}>Remove</button>}<span className="reference-caption">{referenceImage ? referenceName : 'Use a picture to guide the result'}</span></div>{referenceImage && <div className="strength-control"><label htmlFor="reference-strength">Keep reference details</label><input id="reference-strength" type="range" min="0.15" max="0.75" step="0.05" value={strength} onChange={e => setStrength(Number(e.target.value))}/><span>{Math.round((1-strength)*100)}% likeness</span></div>}<button className="generate-button" disabled={!prompt.trim() || imageBusy} onClick={generate}>{imageBusy ? <><LoaderCircle size={17} className="spin"/> Creating your image...</> : <><Sparkles size={17}/> Generate image <ArrowUp size={15}/></>}</button><div className="image-note"><Zap size={14}/> Powered by generative AI</div></div>
           <div className="image-preview-panel">{imageBusy ? <div className="generating-state"><div className="generation-orb"><div/></div><strong>Bringing your vision to life</strong><span>Creating pixels with purpose...</span></div> : image ? <div className="image-result"><img src={image} alt={prompt}/><div className="image-result-toolbar"><span>✳ Your creation</span><button onClick={downloadImage}><Download size={15}/> Download</button></div></div> : <div className="image-empty"><div className="empty-art"><div className="art-shape shape-one"/><div className="art-shape shape-two"/><div className="art-shape shape-three"/><div className="art-spark">✦</div></div><strong>Your canvas awaits</strong><span>Your generated image will appear here.</span></div>}</div>
         </div>
         {error && <div className="error-banner image-error"><span>{error}</span><button onClick={() => setError('')}><X size={14}/></button></div>}
