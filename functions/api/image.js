@@ -16,7 +16,7 @@ export async function onRequestPost({ request, env }) {
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
     // Quality-first settings: use the full SDXL-Lightning step budget and 1024px output.
-    const result = await env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
+    const result = await env.AI.run("@cf/lykon/dreamshaper-8-lcm", {
       prompt: String(prompt).trim().slice(0, 4000),
       negative_prompt: "low quality, blurry, pixelated, low resolution, poorly drawn, distorted, malformed, deformed, duplicate objects, extra limbs, bad anatomy, unrealistic textures, oversaturated, watermark, text, logo",
       width: 1024,
@@ -45,7 +45,7 @@ export async function onRequestPost({ request, env }) {
           : null;
     if (!bytes?.length) {
       const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
-      return json({ error: "SDXL-Lightning returned an unsupported response format (" + shape + ")." }, 502);
+      return json({ error: "DreamShaper returned an unsupported response format (" + shape + ")." }, 502);
     }
     let binary = "";
     const chunkSize = 0x8000;
