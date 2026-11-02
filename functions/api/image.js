@@ -24,7 +24,7 @@ export async function onRequestPost({ request, env }) {
     // When a reference image is supplied, use Workers AI img2img so the
     // uploaded picture guides the composition and character details.
     const result = image_b64
-      ? await env.AI.run("@cf/runwayml/stable-diffusion-v1-5-img2img", {
+      ? await env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
           prompt: userPrompt,
           image_b64,
           strength: Math.max(0.15, Math.min(0.75, Number(strength) || 0.35)),
@@ -63,7 +63,7 @@ export async function onRequestPost({ request, env }) {
     }
     if (!bytes?.length) {
       const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
-      return json({ error: "Flux returned an unsupported response format (" + shape + ")." }, 502);
+      return json({ error: "Workers AI returned an unsupported image response format (" + shape + ")." }, 502);
     }
     let binary = "";
     const chunkSize = 0x8000;
