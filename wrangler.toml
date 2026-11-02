@@ -1,0 +1,6 @@
+name = "t-wana-ai"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-11-02"
+
+[ai]
+binding = "AI"
