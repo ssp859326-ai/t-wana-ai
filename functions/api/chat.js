@@ -19,7 +19,7 @@ export async function onRequestPost({ request, env }) {
       role: m.role === "assistant" ? "assistant" : "user",
       content: String(m.content || "").slice(0, 12000)
     }));
-    const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+    const response = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
       messages: [
         {
           role: "system",
