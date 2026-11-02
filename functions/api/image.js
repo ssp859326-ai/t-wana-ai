@@ -15,9 +15,14 @@ export async function onRequestPost({ request, env }) {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
-    const result = await env.AI.run("@cf/bytedance/sdxl-lightning", {
-      prompt: String(prompt).slice(0, 4000),
-      num_steps: 4
+    // Quality-first settings: use the full SDXL-Lightning step budget and 1024px output.
+    const result = await env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
+      prompt: String(prompt).trim().slice(0, 4000),
+      negative_prompt: "low quality, blurry, pixelated, low resolution, poorly drawn, distorted, malformed, deformed, duplicate objects, extra limbs, bad anatomy, unrealistic textures, oversaturated, watermark, text, logo",
+      width: 1024,
+      height: 1024,
+      num_steps: 20,
+      guidance: 7.5
     });
 
     const base64 = typeof result?.image === "string"
