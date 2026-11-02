@@ -36,13 +36,21 @@ export async function onRequestPost({ request, env }) {
         text: ""
       });
     }
-    const bytes = result instanceof ArrayBuffer
-      ? new Uint8Array(result)
-      : result instanceof Uint8Array
-        ? result
-        : result?.image instanceof Uint8Array
-          ? result.image
-          : null;
+    // Cloudflare Workers AI image models may return a raw ReadableStream,
+    // Response, Blob, ArrayBuffer, Uint8Array, or an object containing image bytes.
+    let bytes = null;
+    const imageValue = result?.image ?? result;
+    if (imageValue instanceof Uint8Array) {
+      bytes = imageValue;
+    } else if (imageValue instanceof ArrayBuffer) {
+      bytes = new Uint8Array(imageValue);
+    } else if (typeof Blob !== "undefined" && imageValue instanceof Blob) {
+      bytes = new Uint8Array(await imageValue.arrayBuffer());
+    } else if (typeof Response !== "undefined" && imageValue instanceof Response) {
+      bytes = new Uint8Array(await imageValue.arrayBuffer());
+    } else if (imageValue && typeof imageValue.getReader === "function") {
+      bytes = new Uint8Array(await new Response(imageValue).arrayBuffer());
+    }
     if (!bytes?.length) {
       const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
       return json({ error: "DreamShaper returned an unsupported response format (" + shape + ")." }, 502);
