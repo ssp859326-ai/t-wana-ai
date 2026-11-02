@@ -16,9 +16,11 @@ export async function onRequestPost({ request, env }) {
   try {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
+
+    // flux-1-schnell rejects num_steps in its input schema on Cloudflare Workers AI.
+    // Use the model's supported default configuration instead.
     const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-      prompt: String(prompt).slice(0, 4000),
-      num_steps: 4
+      prompt: String(prompt).slice(0, 4000)
     });
     const bytes = result instanceof ArrayBuffer
       ? new Uint8Array(result)
