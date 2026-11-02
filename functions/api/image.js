@@ -15,14 +15,14 @@ export async function onRequestPost({ request, env }) {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
-    // Quality-first settings: use the full SDXL-Lightning step budget and 1024px output.
-    const result = await env.AI.run("@cf/lykon/dreamshaper-8-lcm", {
-      prompt: String(prompt).trim().slice(0, 4000),
-      negative_prompt: "low quality, blurry, pixelated, low resolution, poorly drawn, distorted, malformed, deformed, duplicate objects, extra limbs, bad anatomy, unrealistic textures, oversaturated, watermark, text, logo",
+    // Flux Schnell is stronger at following detailed prompts than the previous
+    // DreamShaper LCM model. It uses 4 inference steps and returns image bytes.
+    const userPrompt = String(prompt).trim().slice(0, 4000);
+    const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+      prompt: userPrompt,
       width: 1024,
       height: 1024,
-      num_steps: 20,
-      guidance: 7.5
+      num_steps: 4
     });
 
     const base64 = typeof result?.image === "string"
@@ -36,8 +36,8 @@ export async function onRequestPost({ request, env }) {
         text: ""
       });
     }
-    // Cloudflare Workers AI image models may return a raw ReadableStream,
-    // Response, Blob, ArrayBuffer, Uint8Array, or an object containing image bytes.
+
+    // Workers AI image results may be raw streams, Responses, Blobs, or bytes.
     let bytes = null;
     const imageValue = result?.image ?? result;
     if (imageValue instanceof Uint8Array) {
@@ -53,7 +53,7 @@ export async function onRequestPost({ request, env }) {
     }
     if (!bytes?.length) {
       const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
-      return json({ error: "DreamShaper returned an unsupported response format (" + shape + ")." }, 502);
+      return json({ error: "Flux returned an unsupported response format (" + shape + ")." }, 502);
     }
     let binary = "";
     const chunkSize = 0x8000;
