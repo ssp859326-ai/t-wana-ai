@@ -12,25 +12,26 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost({ request, env }) {
-  if (!env.GEMINI_API_KEY) return json({ error: "AI is not connected yet. Add GEMINI_API_KEY in Cloudflare Pages settings." }, 503);
+  if (!env.AI) return json({ error: "Cloudflare AI binding is not available yet. The site needs to be redeployed after Workers AI is enabled." }, 503);
   try {
     const { messages = [] } = await request.json();
-    const contents = messages.slice(-24).map(m => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: String(m.content || "").slice(0, 12000) }]
+    const normalized = messages.slice(-24).map(m => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: String(m.content || "").slice(0, 12000)
     }));
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: "You are T-wana AI, a thoughtful, capable, warm assistant. Automatically reply in the language the user writes in: Punjabi (including Gurmukhi or Roman Punjabi), Hindi, or English. If the user mixes languages, naturally match them. Be clear, useful, conversational, and honest. Never claim to have generated an image unless the image tool did." }] },
-        contents,
-        generationConfig: { temperature: 0.75, maxOutputTokens: 2048 }
-      })
+    const response = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [
+        {
+          role: "system",
+          content: "You are T-wana AI, a thoughtful, capable, warm assistant. Automatically reply in the language the user writes in: Punjabi (including Gurmukhi or Roman Punjabi), Hindi, or English. If the user mixes languages, naturally match them. Be clear, useful, conversational, and honest. Never claim to have generated an image unless the image tool did."
+        },
+        ...normalized
+      ],
+      max_tokens: 2048,
+      temperature: 0.7
     });
-    const data = await response.json();
-    if (!response.ok) return json({ error: data?.error?.message || "AI request failed." }, response.status);
-    const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "I couldn't generate a response. Please try again.";
+    const text = response?.response || response?.result || "";
+    if (!text) return json({ error: "The AI model returned an empty response. Please try again." }, 502);
     return json({ text });
   } catch (e) {
     return json({ error: e.message || "Unexpected server error." }, 500);
