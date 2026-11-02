@@ -17,11 +17,24 @@ export async function onRequestPost({ request, env }) {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
-    // flux-1-schnell rejects num_steps in its input schema on Cloudflare Workers AI.
-    // Use the model's supported default configuration instead.
     const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
       prompt: String(prompt).slice(0, 4000)
     });
+
+    // Workers AI image models commonly return { image: "<base64>" }.
+    // Support both base64 output and raw binary output.
+    const base64 = typeof result?.image === "string"
+      ? result.image
+      : typeof result === "string"
+        ? result
+        : null;
+    if (base64?.length) {
+      const image = base64.startsWith("data:image/")
+        ? base64
+        : "data:image/png;base64," + base64;
+      return json({ image, text: "" });
+    }
+
     const bytes = result instanceof ArrayBuffer
       ? new Uint8Array(result)
       : result instanceof Uint8Array
@@ -29,7 +42,11 @@ export async function onRequestPost({ request, env }) {
         : result?.image instanceof Uint8Array
           ? result.image
           : null;
-    if (!bytes?.length) return json({ error: "The image model returned no image. Try a different prompt." }, 502);
+    if (!bytes?.length) {
+      const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
+      return json({ error: "Image model returned an unsupported response format (" + shape + ")." }, 502);
+    }
+
     let binary = "";
     const chunkSize = 0x8000;
     for (let offset = 0; offset < bytes.length; offset += chunkSize) {
