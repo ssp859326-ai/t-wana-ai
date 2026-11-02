@@ -12,15 +12,28 @@ export async function onRequestOptions() {
 export async function onRequestPost({ request, env }) {
   if (!env.AI) return json({ error: "Cloudflare AI binding is not available yet. The site needs to be redeployed after Workers AI is enabled." }, 503);
   try {
-    const { prompt } = await request.json();
+    const { prompt, image_b64, strength } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
+    if (image_b64 && (typeof image_b64 !== "string" || image_b64.length > 7_000_000)) {
+      return json({ error: "Reference image is too large. Please choose a smaller image." }, 413);
+    }
 
     // Flux Schnell accepts the prompt here; width/height/num_steps are not
     // supported by this model's Workers AI schema and caused 5006 validation.
     const userPrompt = String(prompt).trim().slice(0, 4000);
-    const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-      prompt: userPrompt
-    });
+    // When a reference image is supplied, use Workers AI img2img so the
+    // uploaded picture guides the composition and character details.
+    const result = image_b64
+      ? await env.AI.run("@cf/runwayml/stable-diffusion-v1-5-img2img", {
+          prompt: userPrompt,
+          image_b64,
+          strength: Math.max(0.15, Math.min(0.75, Number(strength) || 0.35)),
+          num_steps: 20,
+          guidance: 7.5
+        })
+      : await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+          prompt: userPrompt
+        });
 
     const base64 = typeof result?.image === "string"
       ? result.image
