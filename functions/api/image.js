@@ -18,22 +18,31 @@ export async function onRequestPost({ request, env }) {
       return json({ error: "Reference image is too large. Please choose a smaller image." }, 413);
     }
 
-    // Flux Schnell accepts the prompt here; width/height/num_steps are not
-    // supported by this model's Workers AI schema and caused 5006 validation.
-    const userPrompt = String(prompt).trim().slice(0, 4000);
-    // When a reference image is supplied, use Workers AI img2img so the
-    // uploaded picture guides the composition and character details.
-    const result = image_b64
-      ? await env.AI.run("@cf/bytedance/stable-diffusion-xl-lightning", {
-          prompt: userPrompt,
-          image_b64,
-          strength: Math.max(0.15, Math.min(0.75, Number(strength) || 0.35)),
-          num_steps: 20,
-          guidance: 7.5
-        })
-      : await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-          prompt: userPrompt
-        });
+    // FLUX.2 dev accepts reference images through multipart input_image_0.
+    // Convert the client's base64 image into binary and pass a multipart stream
+    // to the Workers AI binding; JSON image_b64 is not a valid model tensor.
+    let result;
+    if (image_b64) {
+      const raw = atob(image_b64);
+      const imageBytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) imageBytes[i] = raw.charCodeAt(i);
+      const form = new FormData();
+      form.append("prompt", userPrompt);
+      form.append("input_image_0", new Blob([imageBytes], { type: "image/jpeg" }), "reference.jpg");
+      form.append("width", "512");
+      form.append("height", "512");
+      const multipart = new Response(form);
+      result = await env.AI.run("@cf/black-forest-labs/flux-2-dev", {
+        multipart: {
+          body: multipart.body,
+          contentType: multipart.headers.get("content-type")
+        }
+      });
+    } else {
+      result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+        prompt: userPrompt
+      });
+    }
 
     const base64 = typeof result?.image === "string"
       ? result.image
