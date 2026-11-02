@@ -15,14 +15,11 @@ export async function onRequestPost({ request, env }) {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
-    // Flux Schnell is stronger at following detailed prompts than the previous
-    // DreamShaper LCM model. It uses 4 inference steps and returns image bytes.
+    // Flux Schnell accepts the prompt here; width/height/num_steps are not
+    // supported by this model's Workers AI schema and caused 5006 validation.
     const userPrompt = String(prompt).trim().slice(0, 4000);
     const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-      prompt: userPrompt,
-      width: 1024,
-      height: 1024,
-      num_steps: 4
+      prompt: userPrompt
     });
 
     const base64 = typeof result?.image === "string"
