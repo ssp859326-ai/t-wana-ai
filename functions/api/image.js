@@ -12,24 +12,28 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost({ request, env }) {
-  if (!env.GEMINI_API_KEY) return json({ error: "Image generation is not connected yet. Add GEMINI_API_KEY in Cloudflare Pages settings." }, 503);
+  if (!env.AI) return json({ error: "Cloudflare AI binding is not available yet. The site needs to be redeployed after Workers AI is enabled." }, 503);
   try {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: String(prompt).slice(0, 4000) }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
-      })
+    const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
+      prompt: String(prompt).slice(0, 4000),
+      num_steps: 4
     });
-    const data = await response.json();
-    if (!response.ok) return json({ error: data?.error?.message || "Image generation failed." }, response.status);
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find(p => p.inlineData?.data);
-    if (!imagePart) return json({ error: parts.find(p => p.text)?.text || "The model returned no image. Try another prompt." }, 502);
-    return json({ image: "data:" + imagePart.inlineData.mimeType + ";base64," + imagePart.inlineData.data, text: parts.find(p => p.text)?.text || "" });
+    const bytes = result instanceof ArrayBuffer
+      ? new Uint8Array(result)
+      : result instanceof Uint8Array
+        ? result
+        : result?.image instanceof Uint8Array
+          ? result.image
+          : null;
+    if (!bytes?.length) return json({ error: "The image model returned no image. Try a different prompt." }, 502);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return json({ image: "data:image/png;base64," + btoa(binary), text: "" });
   } catch (e) {
     return json({ error: e.message || "Unexpected server error." }, 500);
   }
