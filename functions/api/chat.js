@@ -12,7 +12,7 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost({ request, env }) {
-  if (!env.AI) return json({ error: "Cloudflare AI binding is not available yet. The site needs to be redeployed after Workers AI is enabled." }, 503);
+  if (!env.AI) return json({ error: "Cloudflare AI binding is not available. Check the Pages AI binding and redeploy." }, 503);
   try {
     const { messages = [] } = await request.json();
     const normalized = messages.slice(-24).map(m => ({
@@ -30,8 +30,8 @@ export async function onRequestPost({ request, env }) {
       max_tokens: 2048,
       temperature: 0.7
     });
-    const text = response?.response || response?.result || "";
-    if (!text) return json({ error: "The AI model returned an empty response. Please try again." }, 502);
+    const text = typeof response === "string" ? response : (response?.response || response?.result || response?.text || response?.output_text || response?.choices?.[0]?.message?.content || response?.choices?.[0]?.text || response?.message?.content || "");
+    if (!text) return json({ error: "Cloudflare AI returned an unexpected response format.", debug: response }, 502);
     return json({ text });
   } catch (e) {
     return json({ error: e.message || "Unexpected server error." }, 500);
