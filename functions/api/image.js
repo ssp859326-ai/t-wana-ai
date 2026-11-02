@@ -6,35 +6,31 @@ const cors = {
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { ...cors, "Content-Type": "application/json" }
 });
-
 export async function onRequestOptions() {
   return new Response(null, { headers: cors });
 }
-
 export async function onRequestPost({ request, env }) {
   if (!env.AI) return json({ error: "Cloudflare AI binding is not available yet. The site needs to be redeployed after Workers AI is enabled." }, 503);
   try {
     const { prompt } = await request.json();
     if (!prompt || !String(prompt).trim()) return json({ error: "Describe the image you want to create." }, 400);
 
-    const result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-      prompt: String(prompt).slice(0, 4000)
+    const result = await env.AI.run("@cf/bytedance/sdxl-lightning", {
+      prompt: String(prompt).slice(0, 4000),
+      num_steps: 4
     });
 
-    // Workers AI image models commonly return { image: "<base64>" }.
-    // Support both base64 output and raw binary output.
     const base64 = typeof result?.image === "string"
       ? result.image
       : typeof result === "string"
         ? result
         : null;
     if (base64?.length) {
-      const image = base64.startsWith("data:image/")
-        ? base64
-        : "data:image/png;base64," + base64;
-      return json({ image, text: "" });
+      return json({
+        image: base64.startsWith("data:image/") ? base64 : "data:image/png;base64," + base64,
+        text: ""
+      });
     }
-
     const bytes = result instanceof ArrayBuffer
       ? new Uint8Array(result)
       : result instanceof Uint8Array
@@ -44,9 +40,8 @@ export async function onRequestPost({ request, env }) {
           : null;
     if (!bytes?.length) {
       const shape = result && typeof result === "object" ? Object.keys(result).join(", ") : typeof result;
-      return json({ error: "Image model returned an unsupported response format (" + shape + ")." }, 502);
+      return json({ error: "SDXL-Lightning returned an unsupported response format (" + shape + ")." }, 502);
     }
-
     let binary = "";
     const chunkSize = 0x8000;
     for (let offset = 0; offset < bytes.length; offset += chunkSize) {
