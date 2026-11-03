@@ -52,8 +52,6 @@ export async function onRequestPost({ request, env }) {
       // Do not force a fixed subject or art style; the prompt controls the result.
       result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
         prompt,
-        width: 1024,
-        height: 1024,
         steps: 4
       });
     }
