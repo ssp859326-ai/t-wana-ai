@@ -39,13 +39,51 @@ function App() {
     setError('');
     const next = [...messages, { role: 'user', content: clean }];
     setMessages(next); setInput(''); setBusy(true);
+    let answer = '';
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: next }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Something went wrong.');
-      setMessages([...next, { role: 'assistant', content: data.text }]);
-    } catch (e) { setError(e.message || 'Unable to connect.'); }
-    finally { setBusy(false); inputRef.current?.focus(); }
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next })
+      });
+      if (!res.ok) {
+        let data = {};
+        try { data = await res.json(); } catch {}
+        throw new Error(data.error || 'Something went wrong.');
+      }
+      if (!res.body) throw new Error('Streaming is not supported by this connection.');
+      setMessages([...next, { role: 'assistant', content: '' }]);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(payload);
+            const token = chunk.response ?? chunk.text ?? '';
+            if (typeof token === 'string' && token) {
+              answer += token;
+              setMessages([...next, { role: 'assistant', content: answer }]);
+            }
+          } catch {}
+        }
+      }
+      if (!answer.trim()) throw new Error('The AI returned an empty response. Please try again.');
+    } catch (e) {
+      setMessages(next);
+      setError(e.message || 'Unable to connect.');
+    } finally {
+      setBusy(false);
+      inputRef.current?.focus();
+    }
   };
   const chooseReference = async (file) => {
     if (!file) return;
