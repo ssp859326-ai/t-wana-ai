@@ -27,7 +27,7 @@ export async function onRequestPost({ request, env }) {
       const imageBytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) imageBytes[i] = raw.charCodeAt(i);
       const form = new FormData();
-      form.append("prompt", userPrompt);
+      form.append("prompt", String(prompt));
       form.append("input_image_0", new Blob([imageBytes], { type: "image/jpeg" }), "reference.jpg");
       form.append("width", "512");
       form.append("height", "512");
@@ -40,7 +40,7 @@ export async function onRequestPost({ request, env }) {
       });
     } else {
       result = await env.AI.run("@cf/black-forest-labs/flux-1-schnell", {
-        prompt: userPrompt
+        prompt: String(prompt)
       });
     }
 
